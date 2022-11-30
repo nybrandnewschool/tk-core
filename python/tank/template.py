@@ -62,7 +62,7 @@ class Template(object):
                 ordered_keys.append(key)
         return names_keys, ordered_keys
 
-    def __init__(self, definition, keys, name=None):
+    def __init__(self, definition, keys, name=None, generic=False):
         """
         This class is not designed to be used directly but
         should be subclassed by any Template implementations.
@@ -107,6 +107,10 @@ class Template(object):
         self._prefix = ""
         self._static_tokens = []
 
+        # Generic property - If a template is generic, it is lower priority than
+        # an "absolute" template. This property can be used in our templates.yml file.
+        self._generic = generic
+
     def __repr__(self):
         class_name = self.__class__.__name__
         if self.name:
@@ -121,6 +125,15 @@ class Template(object):
         """
         # Use first definition as it should be most inclusive in case of variations
         return self._definitions[0]
+
+    @property
+    def generic(self):
+        """
+        Is the template generic? This marks the template as non-specific. This impacts
+        the template_from_path function as generic templates will be ignored if multiple
+        templates are matched.
+        """
+        return self._generic
 
     @property
     def keys(self):
@@ -250,7 +263,7 @@ class Template(object):
         :param platform: Optional operating system platform. If you leave it at the
                          default value of None, paths will be created to match the
                          current operating system. If you pass in a sys.platform-style string
-                         (e.g. ``win32``, ``linux`` or ``darwin``), paths will be generated to
+                         (e.g. ``win32``, ``linux2`` or ``darwin``), paths will be generated to
                          match that platform.
 
         :returns: Full path, matching the template with the given fields inserted.
@@ -270,7 +283,7 @@ class Template(object):
         :param platform: Optional operating system platform. If you leave it at the
                          default value of None, paths will be created to match the
                          current operating system. If you pass in a sys.platform-style string
-                         (e.g. 'win32', 'linux' or 'darwin'), paths will be generated to
+                         (e.g. 'win32', 'linux2' or 'darwin'), paths will be generated to
                          match that platform.
         :param skip_defaults: Optional. If set to True, if a key has a default value and no
                               corresponding value in the fields argument, its default value
@@ -518,7 +531,15 @@ class TemplatePath(Template):
     and you can pass it per-os roots given by a separate :meth:`root_path`.
     """
 
-    def __init__(self, definition, keys, root_path, name=None, per_platform_roots=None):
+    def __init__(
+        self,
+        definition,
+        keys,
+        root_path,
+        name=None,
+        per_platform_roots=None,
+        generic=False,
+    ):
         """
         TemplatePath objects are typically created automatically by toolkit reading
         the template configuration.
@@ -530,7 +551,7 @@ class TemplatePath(Template):
         :param per_platform_roots: Root paths for all supported operating systems.
                                    This is a dictionary with sys.platform-style keys
         """
-        super().__init__(definition, keys, name=name)
+        super(TemplatePath, self).__init__(definition, keys, name=name, generic=generic)
         self._prefix = root_path
         self._per_platform_roots = per_platform_roots
 
@@ -588,7 +609,7 @@ class TemplatePath(Template):
         :param platform: Optional operating system platform. If you leave it at the
                          default value of None, paths will be created to match the
                          current operating system. If you pass in a sys.platform-style string
-                         (e.g. 'win32', 'linux' or 'darwin'), paths will be generated to
+                         (e.g. 'win32', 'linux2' or 'darwin'), paths will be generated to
                          match that platform.
         :param skip_defaults: Optional. If set to True, if a key has a default value and no
                               corresponding value in the fields argument, its default value
@@ -598,7 +619,7 @@ class TemplatePath(Template):
 
         :returns: Full path, matching the template with the given fields inserted.
         """
-        relative_path = super()._apply_fields(
+        relative_path = super(TemplatePath, self)._apply_fields(
             fields, ignore_types, platform, skip_defaults=skip_defaults
         )
 
@@ -623,10 +644,6 @@ class TemplatePath(Template):
                 )
 
             platform_root_path = self._per_platform_roots.get(platform)
-
-            if platform == "linux2" and platform not in self._per_platform_roots:
-                # Compat with tk-nuke prior to TODO
-                platform = "linux"
 
             if platform_root_path is None:
                 # either the platform is undefined or unknown
@@ -672,7 +689,7 @@ class TemplateString(Template):
     be configured in Shotgun, given a series of key values.
     """
 
-    def __init__(self, definition, keys, name=None, validate_with=None):
+    def __init__(self, definition, keys, name=None, validate_with=None, generic=False):
         """
         TemplatePath objects are typically created automatically by toolkit reading
         the template configuration.
@@ -682,7 +699,7 @@ class TemplateString(Template):
         :param name: Optional name for this template.
         :param validate_with: Optional :class:`Template` to use for validation
         """
-        super().__init__(definition, keys, name=name)
+        super(TemplateString, self).__init__(definition, keys, name=name, generic=generic)
         self.validate_with = validate_with
         self._prefix = "@"
 
@@ -718,7 +735,7 @@ class TemplateString(Template):
         """
         # add path prefix as original design was to require project root
         adj_path = os.path.join(self._prefix, input_path)
-        return super().get_fields(adj_path, skip_keys=skip_keys)
+        return super(TemplateString, self).get_fields(adj_path, skip_keys=skip_keys)
 
 
 def split_path(input_path):
@@ -805,6 +822,7 @@ def make_template_paths(data, keys, all_per_platform_roots, default_root=None):
 
     for template_name, template_data in templates_data.items():
         definition = template_data["definition"]
+        generic = template_data.get("generic", False)
         root_name = template_data.get("root_name")
         if not root_name:
             # If the root name is not explicitly set we use the default arg
@@ -843,6 +861,7 @@ def make_template_paths(data, keys, all_per_platform_roots, default_root=None):
             root_path,
             template_name,
             all_per_platform_roots[root_name],
+            generic,
         )
         template_paths[template_name] = template_path
 
@@ -867,7 +886,7 @@ def make_template_strings(data, keys, template_paths):
 
     for template_name, template_data in templates_data.items():
         definition = template_data["definition"]
-
+        generic = template_data.get("generic", False)
         validator_name = template_data.get("validate_with")
         validator = template_paths.get(validator_name)
         if validator_name and not validator:
@@ -875,7 +894,11 @@ def make_template_strings(data, keys, template_paths):
             raise TankError(msg % (template_name, validator_name))
 
         template_string = TemplateString(
-            definition, keys, template_name, validate_with=validator
+            definition,
+            keys,
+            template_name,
+            validate_with=validator,
+            generic=generic,
         )
 
         template_strings[template_name] = template_string
