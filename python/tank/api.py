@@ -471,6 +471,12 @@ class Sgtk(object):
         """
         matched_templates = self.templates_from_path(path)
 
+        # Remove generic templates when multiple templates matched
+        if len(matched_templates) > 1:
+            for template in list(matched_templates):
+                if template.generic:
+                    matched_templates.remove(template)
+
         if len(matched_templates) == 0:
             return None
         elif len(matched_templates) == 1:

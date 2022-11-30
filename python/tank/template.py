@@ -64,7 +64,7 @@ class Template(object):
                 ordered_keys.append(key)
         return names_keys, ordered_keys
 
-    def __init__(self, definition, keys, name=None):
+    def __init__(self, definition, keys, name=None, generic=False):
         """
         This class is not designed to be used directly but
         should be subclassed by any Template implementations.
@@ -109,6 +109,10 @@ class Template(object):
         self._prefix = ""
         self._static_tokens = []
 
+        # Generic property - If a template is generic, it is lower priority than
+        # an "absolution" template. This property can be used in our templates.yml file.
+        self._generic = generic
+
     def __repr__(self):
         class_name = self.__class__.__name__
         if self.name:
@@ -123,6 +127,15 @@ class Template(object):
         """
         # Use first definition as it should be most inclusive in case of variations
         return self._definitions[0]
+
+    @property
+    def generic(self):
+        """
+        Is the template generic? This marks the template as non-specific. This impacts
+        the template_from_path function as generic templates will be ignored if multiple
+        templates are matched.
+        """
+        return self._generic
 
     @property
     def keys(self):
@@ -520,7 +533,15 @@ class TemplatePath(Template):
     and you can pass it per-os roots given by a separate :meth:`root_path`.
     """
 
-    def __init__(self, definition, keys, root_path, name=None, per_platform_roots=None):
+    def __init__(
+        self,
+        definition,
+        keys,
+        root_path,
+        name=None,
+        per_platform_roots=None,
+        generic=False,
+    ):
         """
         TemplatePath objects are typically created automatically by toolkit reading
         the template configuration.
@@ -532,7 +553,7 @@ class TemplatePath(Template):
         :param per_platform_roots: Root paths for all supported operating systems.
                                    This is a dictionary with sys.platform-style keys
         """
-        super(TemplatePath, self).__init__(definition, keys, name=name)
+        super(TemplatePath, self).__init__(definition, keys, name=name, generic=generic)
         self._prefix = root_path
         self._per_platform_roots = per_platform_roots
 
@@ -671,7 +692,7 @@ class TemplateString(Template):
     be configured in Shotgun, given a series of key values.
     """
 
-    def __init__(self, definition, keys, name=None, validate_with=None):
+    def __init__(self, definition, keys, name=None, validate_with=None, generic=False):
         """
         TemplatePath objects are typically created automatically by toolkit reading
         the template configuration.
@@ -681,7 +702,7 @@ class TemplateString(Template):
         :param name: Optional name for this template.
         :param validate_with: Optional :class:`Template` to use for validation
         """
-        super(TemplateString, self).__init__(definition, keys, name=name)
+        super(TemplateString, self).__init__(definition, keys, name=name, generic=generic)
         self.validate_with = validate_with
         self._prefix = "@"
 
@@ -804,6 +825,7 @@ def make_template_paths(data, keys, all_per_platform_roots, default_root=None):
 
     for template_name, template_data in templates_data.items():
         definition = template_data["definition"]
+        generic = template_data.get("generic", False)
         root_name = template_data.get("root_name")
         if not root_name:
             # If the root name is not explicitly set we use the default arg
@@ -842,6 +864,7 @@ def make_template_paths(data, keys, all_per_platform_roots, default_root=None):
             root_path,
             template_name,
             all_per_platform_roots[root_name],
+            generic,
         )
         template_paths[template_name] = template_path
 
@@ -866,7 +889,7 @@ def make_template_strings(data, keys, template_paths):
 
     for template_name, template_data in templates_data.items():
         definition = template_data["definition"]
-
+        generic = template_data.get("generic", False)
         validator_name = template_data.get("validate_with")
         validator = template_paths.get(validator_name)
         if validator_name and not validator:
@@ -874,7 +897,11 @@ def make_template_strings(data, keys, template_paths):
             raise TankError(msg % (template_name, validator_name))
 
         template_string = TemplateString(
-            definition, keys, template_name, validate_with=validator
+            definition,
+            keys,
+            template_name,
+            validate_with=validator,
+            generic=generic,
         )
 
         template_strings[template_name] = template_string
