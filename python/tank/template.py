@@ -110,7 +110,7 @@ class Template(object):
         self._static_tokens = []
 
         # Generic property - If a template is generic, it is lower priority than
-        # an "absolution" template. This property can be used in our templates.yml file.
+        # an "absolute" template. This property can be used in our templates.yml file.
         self._generic = generic
 
     def __repr__(self):
