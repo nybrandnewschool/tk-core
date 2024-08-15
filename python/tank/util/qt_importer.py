@@ -12,8 +12,10 @@
 Qt version abstraction layer.
 """
 
+import importlib
 import os
 import pkgutil
+import sys
 
 from ..log import LogManager
 
@@ -157,11 +159,11 @@ class QtImporter(object):
         """
         module = None
         try:
-            module = __import__(parent_module_name, globals(), locals(), [module_name])
-            module = getattr(module, module_name)
+            module = importlib.import_module(module_name, parent=parent_module_name)
         except Exception as e:
             logger.debug("Unable to import module '%s': %s", module_name, e)
             pass
+        sys.modules[module_name] = module
         return module
 
     def _import_pyside2(self):
@@ -257,9 +259,8 @@ class QtImporter(object):
 
         QtCore, QtGui = PySide2Patcher.patch(QtCore, QtGui, QtWidgets, PySide2)
         QtNetwork = self._import_module_by_name("PySide2", "QtNetwork")
-        QtWebKit = self._import_module_by_name("PySide2.QtWebKitWidgets", "QtWebKit")
-        QtWebEngineWidgets = self._import_module_by_name(
-            "PySide2.QtWebEngineWidgets", "QtWebEngineWidgets"
+        QtWebKit = self._import_module_by_name("PySide2", "QtWebKit")
+        QtWebEngineWidgets = self._import_module_by_name("PySide2", "QtWebEngineWidgets"
         )
 
         return (
